@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { blink } from '../blink/client'
 import { Pattern, PatternFormData } from '../types/pattern'
+import { processOCR, OCRResult } from '../utils/ocrProcessor'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -37,64 +38,57 @@ export function AddPatternDialog({ open, onOpenChange, onPatternAdded }: AddPatt
     back?: string
   }>({})
   const [ocrResults, setOcrResults] = useState<{
-    front?: { text: string; confidence: number }
-    back?: { text: string; confidence: number }
+    front?: OCRResult
+    back?: OCRResult
   }>({})
 
   const handleInputChange = (field: keyof PatternFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
-  const processOCR = async (type: 'front' | 'back', file: File) => {
+  const processOCRForPhoto = async (type: 'front' | 'back', file: File) => {
     setOcrProcessing(prev => ({ ...prev, [type]: true }))
     
     try {
-      // Convert file to base64 for OCR
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => {
-          const dataUrl = reader.result as string
-          const base64Data = dataUrl.split(',')[1]
-          resolve(base64Data)
-        }
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      })
-
-      // Extract text using Blink AI
-      const extractedText = await blink.data.extractFromBlob(file)
+      // Process OCR using enhanced processor
+      const ocrResult = await processOCR(file)
       
       // Store OCR results
       setOcrResults(prev => ({
         ...prev,
-        [type]: {
-          text: extractedText,
-          confidence: 0.85 // Mock confidence for now
-        }
+        [type]: ocrResult
       }))
 
       // Auto-fill form fields from OCR if they're empty
-      if (extractedText && !formData.patternCompany) {
-        const companies = ['Simplicity', 'McCall\'s', 'Butterick', 'Vogue', 'Burda', 'New Look']
-        const foundCompany = companies.find(company => 
-          extractedText.toLowerCase().includes(company.toLowerCase())
-        )
-        if (foundCompany) {
-          handleInputChange('patternCompany', foundCompany)
-        }
+      const { extractedData } = ocrResult
+      
+      if (extractedData.company && !formData.patternCompany) {
+        handleInputChange('patternCompany', extractedData.company)
       }
-
-      // Extract pattern number
-      if (extractedText && !formData.patternNumber) {
-        const numberMatch = extractedText.match(/\b\d{4,5}\b/)
-        if (numberMatch) {
-          handleInputChange('patternNumber', numberMatch[0])
-        }
+      
+      if (extractedData.patternNumber && !formData.patternNumber) {
+        handleInputChange('patternNumber', extractedData.patternNumber)
+      }
+      
+      if (extractedData.patternName && !formData.patternName) {
+        handleInputChange('patternName', extractedData.patternName)
+      }
+      
+      if (extractedData.sizeRange && !formData.sizeRange) {
+        handleInputChange('sizeRange', extractedData.sizeRange)
+      }
+      
+      if (extractedData.fabricType && !formData.fabricType) {
+        handleInputChange('fabricType', extractedData.fabricType)
+      }
+      
+      if (extractedData.difficulty && !formData.difficulty) {
+        handleInputChange('difficulty', extractedData.difficulty)
       }
 
       toast({
         title: `${type === 'front' ? 'Front' : 'Back'} photo processed`,
-        description: 'Text extracted and form auto-filled where possible'
+        description: `Text extracted with ${Math.round(ocrResult.confidence * 100)}% confidence`
       })
 
     } catch (error) {
@@ -129,7 +123,7 @@ export function AddPatternDialog({ open, onOpenChange, onPatternAdded }: AddPatt
     }))
 
     // Process OCR
-    await processOCR(type, file)
+    await processOCRForPhoto(type, file)
   }
 
   const resetForm = () => {
@@ -262,13 +256,50 @@ export function AddPatternDialog({ open, onOpenChange, onPatternAdded }: AddPatt
                 </div>
                 
                 {ocrResult && (
-                  <div className="text-left bg-muted p-3 rounded-lg">
-                    <p className="text-xs text-muted-foreground mb-1">
-                      Extracted text (confidence: {Math.round(ocrResult.confidence * 100)}%):
+                  <div className="text-left bg-muted p-3 rounded-lg space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      OCR Results (confidence: {Math.round(ocrResult.confidence * 100)}%):
                     </p>
-                    <p className="text-sm font-mono text-foreground line-clamp-3">
-                      {ocrResult.text}
-                    </p>
+                    
+                    {/* Show extracted structured data */}
+                    {Object.keys(ocrResult.extractedData).length > 0 && (
+                      <div className="space-y-1">
+                        {ocrResult.extractedData.company && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-medium text-primary">Company:</span>
+                            <span className="text-xs text-foreground">{ocrResult.extractedData.company}</span>
+                          </div>
+                        )}
+                        {ocrResult.extractedData.patternNumber && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-medium text-primary">Number:</span>
+                            <span className="text-xs text-foreground">{ocrResult.extractedData.patternNumber}</span>
+                          </div>
+                        )}
+                        {ocrResult.extractedData.patternName && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-medium text-primary">Name:</span>
+                            <span className="text-xs text-foreground line-clamp-1">{ocrResult.extractedData.patternName}</span>
+                          </div>
+                        )}
+                        {ocrResult.extractedData.sizeRange && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-medium text-primary">Size:</span>
+                            <span className="text-xs text-foreground">{ocrResult.extractedData.sizeRange}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Show raw text in smaller font */}
+                    <details className="text-xs">
+                      <summary className="text-muted-foreground cursor-pointer hover:text-foreground">
+                        Raw extracted text
+                      </summary>
+                      <p className="font-mono text-muted-foreground mt-1 line-clamp-3">
+                        {ocrResult.text}
+                      </p>
+                    </details>
                   </div>
                 )}
 

@@ -5,6 +5,8 @@ import { PatternGallery } from './components/PatternGallery'
 import { AddPatternDialog } from './components/AddPatternDialog'
 import { PatternDetailDialog } from './components/PatternDetailDialog'
 import { SearchAndFilter } from './components/SearchAndFilter'
+import { PatternStats } from './components/PatternStats'
+import { QuickActions } from './components/QuickActions'
 import { Button } from './components/ui/button'
 import { Plus, Scissors } from 'lucide-react'
 import { Toaster } from './components/ui/toaster'
@@ -163,6 +165,12 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Pattern Statistics */}
+        <PatternStats patterns={patterns} />
+
+        {/* Quick Actions */}
+        <QuickActions patterns={patterns} />
+
         {/* Search and Filter */}
         <div className="mb-8">
           <SearchAndFilter 
